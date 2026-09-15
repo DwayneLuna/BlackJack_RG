@@ -35,10 +35,10 @@
       color: white; border: 2px solid #145a32; padding: 12px 24px; 
       font-size: 16px; font-weight: bold; border-radius: 25px; 
       cursor: pointer; margin: 5px; box-shadow: 0 4px 6px rgba(0,0,0,0.3);
-      transition: transform 0.1s, filter 0.2s;
+      transition: transform 0.1s, filter 0.2s, opacity 0.2s;
     }
-    .btn:hover { filter: brightness(1.1); transform: translateY(-2px); }
-    .btn:active { transform: translateY(1px); }
+    .btn:hover:not(:disabled) { filter: brightness(1.1); transform: translateY(-2px); }
+    .btn:active:not(:disabled) { transform: translateY(1px); }
     .btn-danger { background: linear-gradient(145deg, #c0392b, #922b21); border-color: #641e16; }
     .btn-warning { background: linear-gradient(145deg, #d35400, #a04000); border-color: #6e2c00; }
     
@@ -120,7 +120,7 @@
     
     <div style="background: var(--panel-bg); padding: 20px; border-radius: 12px; max-width: 500px; margin: 0 auto;">
       <h2>Registrar Jugadores</h2>
-      <input type="text" id="input-name" placeholder="Ej. Dwayne" onkeypress="if(event.key === 'Enter') addPlayer()">
+      <input type="text" id="input-name" placeholder="Ej. Pedro" onkeypress="if(event.key === 'Enter') addPlayer()">
       <br>
       <button class="btn btn-info" onclick="addPlayer()">➕ Añadir Jugador</button>
       <ul id="setup-players-list"></ul>
@@ -148,7 +148,8 @@
     <!-- Controles y Análisis del Turno Actual -->
     <div id="action-panel" style="margin-top: 20px; display: none;">
       <h3 id="current-turn-label">Turno de: </h3>
-      <button class="btn btn-warning" onclick="hit()">➕ Pedir (Hit)</button>
+      <!-- ID agregado al botón de pedir para poder controlarlo -->
+      <button class="btn btn-warning" id="btn-hit" onclick="hit()">➕ Pedir (Hit)</button>
       <button class="btn btn-danger" onclick="stand()">✋ Plantarse (Stand)</button>
       
       <div id="theory-container" class="theory-box">
@@ -178,7 +179,7 @@
     const suits = ['♠', '♥', '♦', '♣'];
     const values = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
     let deck = [];
-    let players = []; // { name, hand, score, status, chips, bet }
+    let players = []; 
     let dealerHand = [];
     let currentPlayerIndex = 0;
     let isRoundActive = false;
@@ -187,7 +188,7 @@
     // --- LÓGICA DE CARTAS ---
     function resetDeck() {
       deck = [];
-      for (let i = 0; i < 4; i++) { // 4 barajas
+      for (let i = 0; i < 4; i++) { 
         for (let suit of suits) {
           for (let value of values) {
             deck.push({ value, suit, isRed: suit === '♥' || suit === '♦' });
@@ -220,7 +221,7 @@
           { move: "Plantarse (Stand)", reason: `El crupier muestra ${dVal} (carta débil). Probabilidad alta de que el crupier se pase.` } :
           { move: "Pedir (Hit)", reason: `El crupier muestra ${dVal} (fuerte). Matemáticamente debes arriesgarte a mejorar tu mano.` };
       }
-      if (playerScore >= 13 && pScore <= 16) {
+      if (playerScore >= 13 && playerScore <= 16) {
         return (dVal <= 6) ? 
           { move: "Plantarse (Stand)", reason: `El crupier muestra ${dVal} (débil). Estrategia óptima: transferir el riesgo de pasarse al crupier.` } :
           { move: "Pedir (Hit)", reason: `El crupier muestra ${dVal} (fuerte). Plantarse resulta en un Valor Esperado negativo constante.` };
@@ -272,7 +273,6 @@
       dealerRevealed = false;
       document.getElementById('round-results').style.display = 'none';
       
-      // Repartir cartas iniciales
       players.forEach(p => {
         p.hand = [deck.pop(), deck.pop()];
         p.score = calculateScore(p.hand);
@@ -288,25 +288,34 @@
     }
 
     function processTurn() {
-      // Buscar el próximo jugador que siga jugando
       while (currentPlayerIndex < players.length && players[currentPlayerIndex].status !== 'playing') {
         currentPlayerIndex++;
       }
 
       if (currentPlayerIndex >= players.length) {
-        // Todos terminaron, turno del crupier
         playDealer();
       } else {
-        // Turno del jugador actual
         renderTable();
         document.getElementById('action-panel').style.display = 'block';
         const p = players[currentPlayerIndex];
         document.getElementById('current-turn-label').innerText = `Turno de: ${p.name}`;
         
-        // Actualizar Teoría de Juegos
-        const opt = getOptimalAction(p.score, dealerHand[0].value);
-        document.getElementById('lbl-optimal').innerText = "Acción Óptima: " + opt.move;
-        document.getElementById('lbl-reasoning').innerText = opt.reason;
+        // BLOQUEO DE BOTÓN HIT CUANDO TIENE 20 O 21
+        const btnHit = document.getElementById('btn-hit');
+        if (p.score >= 20) {
+          btnHit.disabled = true;
+          btnHit.style.opacity = '0.5';
+          btnHit.style.cursor = 'not-allowed';
+          document.getElementById('lbl-optimal').innerText = "Acción Óptima: Plantarse (Stand)";
+          document.getElementById('lbl-reasoning').innerText = `Tienes ${p.score} puntos. El sistema ha bloqueado pedir cartas para proteger tu mano de volar.`;
+        } else {
+          btnHit.disabled = false;
+          btnHit.style.opacity = '1';
+          btnHit.style.cursor = 'pointer';
+          const opt = getOptimalAction(p.score, dealerHand[0].value);
+          document.getElementById('lbl-optimal').innerText = "Acción Óptima: " + opt.move;
+          document.getElementById('lbl-reasoning').innerText = opt.reason;
+        }
       }
     }
 
@@ -319,6 +328,7 @@
         p.status = 'busted';
         currentPlayerIndex++; // Fin de su turno
       }
+      
       renderTable();
       processTurn();
     }
@@ -334,7 +344,6 @@
       dealerRevealed = true;
       renderTable();
 
-      // Animación de robo del crupier con delay
       function dealerDraw() {
         if (calculateScore(dealerHand) < 17) {
           setTimeout(() => {
@@ -356,14 +365,13 @@
         if (p.status === 'busted') {
           p.chips -= p.bet;
         } else if (p.status === 'blackjack') {
-          p.chips += p.bet * 1.5; // Paga 3 a 2
+          p.chips += p.bet * 1.5; 
         } else {
           if (dScore > 21 || p.score > dScore) {
             p.chips += p.bet;
           } else if (p.score < dScore) {
             p.chips -= p.bet;
           }
-          // Empate: no pasa nada
         }
       });
       
@@ -372,7 +380,6 @@
     }
 
     function renderTable() {
-      // Render Crupier
       const dContainer = document.getElementById('dealer-hand');
       dContainer.innerHTML = '';
       dealerHand.forEach((card, index) => {
@@ -380,7 +387,6 @@
       });
       document.getElementById('dealer-score-badge').innerText = dealerRevealed ? calculateScore(dealerHand) : getCardValue(dealerHand[0].value);
 
-      // Render Jugadores
       const pContainer = document.getElementById('players-container');
       pContainer.innerHTML = '';
       
@@ -409,7 +415,6 @@
     function endSession() {
       switchScreen('screen-ranking');
       
-      // Ordenar por fichas
       let sortedPlayers = [...players].sort((a, b) => b.chips - a.chips);
       
       let html = "<table><tr><th>Posición</th><th>Jugador</th><th>Fichas Finales</th><th>Estado</th></tr>";
